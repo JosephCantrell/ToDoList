@@ -4,31 +4,39 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:id="@+id/mainLayout"
     tools:context="com.csce4623.ahnelson.todolist.HomeActivity">
 
     <Button
-        android:id="@+id/btnNewNote"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:id="@+id/btnAddNew"
+        android:layout_width="75dp"
+        android:layout_height="75dp"
         android:layout_marginStart="24dp"
-        android:layout_marginTop="32dp"
+        android:layout_marginTop="676dp"
         android:layout_marginEnd="24dp"
-        android:text="@string/new_note"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/roundedbutton"
+        android:foreground="@android:drawable/ic_input_add"
+        android:onClick="onClick"
+        android:shadowColor="#AD8BCF8E"
+        android:textAppearance="@style/TextAppearance.AppCompat.Body1"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.50"
+        app:layout_constraintHorizontal_bias="0.997"
         app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="1.0" />
+
+    <ListView
+        android:id="@+id/listView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_above="@+id/btnAddNew"
+        android:descendantFocusability="blocksDescendants"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentTop="true"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <Button
-        android:id="@+id/btnDeleteNote"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="24dp"
-        android:layout_marginTop="32dp"
-        android:layout_marginEnd="24dp"
-        android:text="@string/delete_note"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btnNewNote" />
 </android.support.constraint.ConstraintLayout>
