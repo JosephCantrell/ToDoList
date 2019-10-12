@@ -1,15 +1,11 @@
 package com.csce4623.ahnelson.todolist;
 
-import android.app.Activity;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
 import android.content.ContentValues;
 import android.content.Context;
-import android.content.Intent;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
-import android.net.Uri;
-import android.provider.ContactsContract;
 import android.support.constraint.ConstraintLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -34,9 +30,13 @@ import android.widget.Toast;
 
 import com.csce4623.ahnelson.todolist.Database.TaskContract;
 import com.csce4623.ahnelson.todolist.Database.TaskDbHelper;
+import com.csce4623.ahnelson.todolist.NotificationScheduler;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Calendar;
+
+import static java.lang.StrictMath.abs;
 
 //Create HomeActivity and implement the OnClick listener
 public class HomeActivity extends AppCompatActivity implements View.OnClickListener{
@@ -46,9 +46,7 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
 
     private TaskDbHelper mHelper;
 
-
-
-
+    long tillMillis = 0;
 
     DatePickerDialog datePicker;
     TimePickerDialog timePicker;
@@ -118,8 +116,6 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
 
     void editNode(String title, String content, String date, String time){
 
-
-
         final EditText calText;
         final EditText timeText;
         Button save;
@@ -127,6 +123,7 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         LayoutInflater layoutInflater = (LayoutInflater) HomeActivity.this.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         final View customView = layoutInflater.inflate(R.layout.note_activity,null);
 
+        final Calendar cldr = Calendar.getInstance();
 
 
         save = (Button) customView.findViewById(R.id.btnSave);
@@ -143,16 +140,17 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         calText.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                final Calendar cldr = Calendar.getInstance();
                 int day = cldr.get(Calendar.DAY_OF_MONTH);
                 int month = cldr.get(Calendar.MONTH);
                 int year = cldr.get(Calendar.YEAR);
-                // date picker dialog
                 datePicker = new DatePickerDialog(HomeActivity.this,
                         new DatePickerDialog.OnDateSetListener() {
                             @Override
                             public void onDateSet(DatePicker view, int year, int monthOfYear, int dayOfMonth) {
                                 calText.setText(dayOfMonth + "/" + (monthOfYear + 1) + "/" + year);
+                                cldr.set(Calendar.DAY_OF_MONTH, dayOfMonth);
+                                cldr.set(Calendar.MONTH, monthOfYear);
+                                cldr.set(Calendar.YEAR, year);
                             }
                         }, year, month, day);
                 datePicker.show();
@@ -164,20 +162,24 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         timeText.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                final Calendar cldr = Calendar.getInstance();
-                int hour = cldr.get(Calendar.HOUR_OF_DAY);
+                final int hour = cldr.get(Calendar.HOUR_OF_DAY);
                 int minutes = cldr.get(Calendar.MINUTE);
-                // time picker dialog
                 timePicker = new TimePickerDialog(HomeActivity.this,
                         new TimePickerDialog.OnTimeSetListener() {
                             @Override
                             public void onTimeSet(TimePicker tp, int sHour, int sMinute) {
                                 timeText.setText(sHour + ":" + sMinute);
+                                cldr.set(Calendar.HOUR, sHour);
+                                cldr.set(Calendar.MINUTE, sMinute);
                             }
                         }, hour, minutes, true);
                 timePicker.show();
             }
         });
+
+        tillMillis = cldr.getTimeInMillis();
+
+        Log.i("TIME", "tillMillis: "+tillMillis);
 
         save.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -265,6 +267,7 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
                 null,
                 values,
                 SQLiteDatabase.CONFLICT_REPLACE);
+
         db.close();
     }
 
@@ -279,7 +282,21 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
                 null, null, null, null, null);
         while (cursor.moveToNext()) {
             int idx = cursor.getColumnIndex(TaskContract.TaskEntry.COL_TASK_TITLE);
-            int content = cursor.getColumnIndex(TaskContract.TaskEntry.COL_TASK_CONTENT);
+            int idIndex = cursor.getColumnIndex(TaskContract.TaskEntry._ID);
+            int ID = cursor.getInt(idIndex);
+            NotificationScheduler nf = new NotificationScheduler();
+            AlarmReceiver alarm = new AlarmReceiver();
+            if(tillMillis>0) {
+                long msFromNow = abs(tillMillis - System.currentTimeMillis());
+
+                Log.i("TIME", "TillMillis: " + tillMillis);
+                Log.i("TIME", "System time: " + System.currentTimeMillis());
+
+                Log.i("TIME", "msFromNow: " + msFromNow);
+                NotificationScheduler NS = new NotificationScheduler();
+                NS.scheduleNotification(HomeActivity.this, msFromNow, cursor.getString(idx), ID);
+            }
+
             taskList.add(cursor.getString(idx));
             //dataModels.add(new DataModel(cursor.getString(idx),cursor.getString(content)));
 
@@ -317,21 +334,28 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         updateUI();
     }
 
-    private void modifyTask(int position){
-        SQLiteDatabase db = mHelper.getReadableDatabase();
-        Cursor cursor = db.query(TaskContract.TaskEntry.TABLE,
+    private void modifyTask(final int position){
+        final SQLiteDatabase db = mHelper.getReadableDatabase();
+
+        // Grab the database and create a cursor
+        final Cursor cursor = db.query(TaskContract.TaskEntry.TABLE,
                 new String[]{TaskContract.TaskEntry._ID, TaskContract.TaskEntry.COL_TASK_TITLE, TaskContract.TaskEntry.COL_TASK_CONTENT, TaskContract.TaskEntry.COL_TASK_DATE, TaskContract.TaskEntry.COL_TASK_TIME},
                 null, null, null, null, null);
 
+        // Set the cursor to the supplied position
         cursor.moveToPosition(position);
 
         Log.i("MODIFY TASK","cursor position: " + cursor.getPosition());
 
+        // Grab the information from the position given
         int titleIndex = cursor.getColumnIndex(TaskContract.TaskEntry.COL_TASK_TITLE);
         int contentIndex = cursor.getColumnIndex(TaskContract.TaskEntry.COL_TASK_CONTENT);
         int dateIndex = cursor.getColumnIndex(TaskContract.TaskEntry.COL_TASK_DATE);
         int timeIndex = cursor.getColumnIndex(TaskContract.TaskEntry.COL_TASK_TIME);
 
+        int positionIndex = cursor.getColumnIndex(TaskContract.TaskEntry._ID);
+
+        // Set the information equal to the database information at the given location
         String title = cursor.getString(titleIndex);
         Log.i("MODIFY TASK", "Title: "+ title);
         String content = cursor.getString(contentIndex);
@@ -341,14 +365,22 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         String time = cursor.getString(timeIndex);
         Log.i("MODIFY TASK", "Time: "+ time);
 
-        final EditText titleText = findViewById(R.id.etNoteTitle);
-        final EditText contentText = findViewById(R.id.etNoteContent);
-        final EditText calText = findViewById(R.id.etDatePicker);
-        final EditText timeText = findViewById(R.id.etTimePicker);
-        Button save;
+        final int positionNumber = cursor.getInt(positionIndex);
+        final int thisPosition = positionNumber;
 
+        // Start to create the edit screen (same as the create screen
         LayoutInflater layoutInflater = (LayoutInflater) HomeActivity.this.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         final View customView = layoutInflater.inflate(R.layout.note_activity,null);
+
+
+        EditText titleText = customView.findViewById(R.id.etNoteTitle);
+        EditText contentText = customView.findViewById(R.id.etNoteContent);
+        final EditText calText = (EditText) customView.findViewById(R.id.etDatePicker);
+        final EditText timeText = (EditText) customView.findViewById(R.id.etTimePicker);
+        Button save;
+
+
+
 
 
 
@@ -362,16 +394,114 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         editText.showAtLocation(editItemsConstraintLayout, Gravity.CENTER, 0, 0);
 
         titleText.setText(title);
+        final String originalTitle = title;
         contentText.setText(content);
         calText.setText(date);
         timeText.setText(time);
 
+        calText.setInputType(InputType.TYPE_NULL);
+        calText.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                final Calendar cldr = Calendar.getInstance();
+                int day = cldr.get(Calendar.DAY_OF_MONTH);
+                int month = cldr.get(Calendar.MONTH);
+                int year = cldr.get(Calendar.YEAR);
+                // date picker dialog
+                datePicker = new DatePickerDialog(HomeActivity.this,
+                        new DatePickerDialog.OnDateSetListener() {
+                            @Override
+                            public void onDateSet(DatePicker view, int year, int monthOfYear, int dayOfMonth) {
+                                calText.setText(dayOfMonth + "/" + (monthOfYear + 1) + "/" + year);
+                            }
+                        }, year, month, day);
+                datePicker.show();
+            }
+        });
 
+        timeText.setInputType(InputType.TYPE_NULL);
+        timeText.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                final Calendar cldr = Calendar.getInstance();
+                int hour = cldr.get(Calendar.HOUR_OF_DAY);
+                int minutes = cldr.get(Calendar.MINUTE);
+                timePicker = new TimePickerDialog(HomeActivity.this,
+                        new TimePickerDialog.OnTimeSetListener() {
+                            @Override
+                            public void onTimeSet(TimePicker tp, int sHour, int sMinute) {
+                                timeText.setText(sHour + ":" + sMinute);
+                            }
+                        }, hour, minutes, true);
+                timePicker.show();
+            }
+        });
 
-        cursor.close();
-        db.close();
+        save.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                boolean isError = false;
 
+                EditText titleET = customView.findViewById(R.id.etNoteTitle);
+                EditText contentET = customView.findViewById(R.id.etNoteContent);
+                EditText dateET = customView.findViewById(R.id.etDatePicker);
+                EditText timeEt = customView.findViewById(R.id.etTimePicker);
+
+                // Checking to see if the title is empty
+                String titleText = titleET.getText().toString();
+                if (titleText.isEmpty()) {
+                    toastDisplay(1);
+                    isError = true;
+                }
+
+                // Checking to see if the content is empty
+                String contentText = contentET.getText().toString();
+                if (contentText.isEmpty()&& !isError){
+                    toastDisplay(2);
+                    isError = true;
+                }
+
+                // Checking to see if the date is empty
+                String dateText = dateET.getText().toString();
+                if (dateText.isEmpty()&& !isError){
+                    toastDisplay(3);
+                    isError = true;
+                }
+
+                // Checking to see if the time is empty
+                String timeText = timeEt.getText().toString();
+                if (timeText.isEmpty()&& !isError){
+                    toastDisplay(4);
+                    isError = true;
+                }
+                if(!isError) {
+                    ContentValues cv = new ContentValues();
+                    cv.put(TaskContract.TaskEntry.COL_TASK_TITLE,titleText);
+                    cv.put(TaskContract.TaskEntry.COL_TASK_CONTENT, contentText);
+                    cv.put(TaskContract.TaskEntry.COL_TASK_DATE, dateText);
+                    cv.put(TaskContract.TaskEntry.COL_TASK_TIME, timeText);
+
+                    Log.i("UPDATE", "original Title: " + originalTitle);
+                    Log.i("UPDATE", "new Title: " + titleText);
+                    Log.i("UPDATE", "new content: " + contentText);
+                    Log.i("UPDATE", "new date: " + dateText);
+                    Log.i("UPDATE", "new time: " + timeText);
+
+                    Log.i("UPDATE", "Found position: " + positionNumber);
+                    Log.i("UPDATE", "Given position: " + position);
+
+                    db.update(TaskContract.TaskEntry.TABLE, cv, TaskContract.TaskEntry._ID + "=" + positionNumber, null);
+                    updateUI();
+
+                    cursor.close();
+                    db.close();
+
+                    editText.dismiss();
+                }
+            }
+        });
     }
+
 
 
 }
